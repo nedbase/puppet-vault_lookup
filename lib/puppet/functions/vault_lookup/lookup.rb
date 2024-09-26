@@ -16,6 +16,7 @@ Puppet::Functions.create_function(:'vault_lookup::lookup', Puppet::Functions::In
     optional_param 'String', :secret_id
     optional_param 'Optional[String]', :approle_path_segment
     optional_param 'String', :agent_sink_file
+    optional_param 'String', :wrap
     return_type 'Sensitive'
   end
 
@@ -50,7 +51,8 @@ Puppet::Functions.create_function(:'vault_lookup::lookup', Puppet::Functions::In
                                         role_id: options['role_id'],
                                         secret_id: options['secret_id'],
                                         approle_path_segment: options['approle_path_segment'],
-                                        agent_sink_file: options['agent_sink_file'])
+                                        agent_sink_file: options['agent_sink_file'],
+                                        wrap: options['wrap'])
   end
 
   # Lookup with a path and positional arguments.
