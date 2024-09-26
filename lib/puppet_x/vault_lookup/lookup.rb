@@ -101,8 +101,7 @@ module PuppetX
                             uri: secret_uri,
                             token: token,
                             namespace: namespace,
-                            key: field,
-                            wrap: wrap)
+                            key: field)
         else
           data = get_wrapped_secret(client: client,
                                     uri: secret_uri,
