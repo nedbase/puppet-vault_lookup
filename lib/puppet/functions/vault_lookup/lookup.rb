@@ -2,7 +2,7 @@
 
 require_relative '../../../puppet_x/vault_lookup/lookup'
 
-Puppet::Functions.create_function(:'vault_lookup::lookup', Puppet::Functions::InternalFunction) do
+Puppet::Functions.create_function(:'x_vault_lookup::lookup', Puppet::Functions::InternalFunction) do
   dispatch :lookup do
     cache_param
     param 'String', :path
