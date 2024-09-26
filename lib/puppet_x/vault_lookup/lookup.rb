@@ -17,7 +17,8 @@ module PuppetX
                       role_id: nil,
                       secret_id: nil,
                       approle_path_segment: nil,
-                      agent_sink_file: nil)
+                      agent_sink_file: nil,
+                      wrap: nil)
 
         if vault_addr.nil?
           Puppet.debug 'No Vault address was set on function, defaulting to value from VAULT_ADDR env value'
@@ -94,15 +95,27 @@ module PuppetX
         end
 
         secret_uri = vault_base_uri + "/v1/#{path.delete_prefix('/')}"
-        data = get_secret(client: client,
-                          uri: secret_uri,
-                          token: token,
-                          namespace: namespace,
-                          key: field)
+
+        if wrap.nil?
+          data = get_secret(client: client,
+                            uri: secret_uri,
+                            token: token,
+                            namespace: namespace,
+                            key: field,
+                            wrap: wrap)
+        else
+          data = get_wrapped_secret(client: client,
+                                    uri: secret_uri,
+                                    token: token,
+                                    namespace: namespace,
+                                    wrap: wrap)
+        end
 
         sensitive_data = Puppet::Pops::Types::PSensitiveType::Sensitive.new(data)
-        Puppet.debug "Caching found data for #{path}"
-        cache_hash[cache_key] = sensitive_data
+        if wrap.nil?
+          Puppet.debug "Caching found data for #{path}"
+          cache_hash[cache_key] = sensitive_data
+        end
         sensitive_data
       end
 
@@ -139,6 +152,28 @@ module PuppetX
         end
       end
 
+      def self.get_wrapped_secret(client: uri: token: namespace: wrap = '30s')
+        headers = {
+          'X-Vault-Token' => token,
+          'X-Vault-Namespace' => namespace,
+          'X-Vault-Wrap-Ttl' => wrap
+        }.delete_if { |_key, value| value.nil? }
+
+        secret_response = client.post(uri,
+                                     headers: headers,
+                                     options: { include_system_store: true })
+        unless secret_response.success?
+          message = "Received #{secret_response.code} response code from vault at #{uri} for secret lookup"
+          raise Puppet::Error, append_api_errors(message, secret_response)
+        end
+        begin
+          json_data = JSON.parse(secret_response.body)
+          'wrapped' + json_data['wrap_info']['token']
+        rescue StandardError
+          raise Puppet::Error, 'Error parsing json secret data from vault response'
+        end
+      end
+
       def self.ensure_trailing_slash(path)
         if path.end_with?('/')
           path
@@ -162,10 +197,26 @@ module PuppetX
 
         segment = ensure_trailing_slash(path_segment)
         login_url = vault_addr + segment + 'login' # rubocop:disable Style/StringConcatenation
-        get_token(client, login_url, vault_request_data, namespace)
+        is_wrapped = secret_id.match(/^wrapped:/)
+        get_token(client, login_url, vault_request_data, namespace, is_wrapped)
       end
 
-      def self.get_token(client, login_url, request_data, namespace)
+      def self.get_token(client, login_url, request_data, namespace, is_wrapped = false)
+        if is_wrapped
+          unwrap_url = vault_addr + '/sys/wrapping/unwrap' # rubocop:disable Style/StringConcatenation
+          token = request.secret_id.delete_prefix('wrapped:')
+          response = unwrap_response(client, unwrap_url, token, namespace)
+          unless response.success?
+            message = "Received #{response.code} response code from vault at #{unwrap_url} for unwrapping"
+            raise Puppet::Error, append_api_errors(message, response)
+          end
+          begin
+            request_data['secret_id'] = JSON.parse(response.body)['data']['secret_id']
+          rescue StandardError
+            raise Puppet::Error, 'Unable to parse secret_id from vault response'
+          end
+        end
+
         headers = { 'Content-Type' => 'application/json', 'X-Vault-Namespace' => namespace }.delete_if { |_key, value| value.nil? }
         response = client.post(login_url,
                                request_data,
@@ -185,6 +236,19 @@ module PuppetX
         raise Puppet::Error, 'No client_token found' if token.nil?
 
         token
+      end
+
+      def self.unwrap_response(client, unwrap_url, token, namespace)
+        headers = {
+          'X-Vault-Namespace' => namespace,
+          'X-Vault-Token' => token
+        }.delete_if { |_key, value| value.nil? }
+        response = client.post(unwrap_url,
+                               nil,
+                               headers: headers,
+                               options: { include_system_store: true })
+
+        response
       end
 
       def self.append_api_errors(message, response)
