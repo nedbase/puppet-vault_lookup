@@ -152,7 +152,7 @@ module PuppetX
         end
       end
 
-      def self.get_wrapped_secret(client: uri: token: namespace: wrap = '30s')
+      def self.get_wrapped_secret(client:, uri:, token:, namespace:, wrap:)
         headers = {
           'X-Vault-Token' => token,
           'X-Vault-Namespace' => namespace,
