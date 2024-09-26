@@ -163,7 +163,7 @@ module PuppetX
                                      headers: headers,
                                      options: { include_system_store: true })
         unless secret_response.success?
-          message = "Received #{secret_response.code} response code from vault at #{uri} for secret lookup"
+          message = "Received #{secret_response.code} response code from vault at #{uri} for wrapped secret lookup"
           raise Puppet::Error, append_api_errors(message, secret_response)
         end
         begin
